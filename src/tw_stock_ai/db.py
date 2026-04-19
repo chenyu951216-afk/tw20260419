@@ -1,5 +1,7 @@
 from collections.abc import Generator
 from pathlib import Path
+import sys
+from urllib.parse import urlsplit, urlunsplit
 
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import Session, sessionmaker
@@ -8,6 +10,43 @@ from tw_stock_ai.config import get_settings
 from tw_stock_ai.models import Base
 
 settings = get_settings()
+
+
+def normalize_database_url(database_url: str) -> str:
+    normalized = (database_url or "").strip()
+    if not normalized:
+        raise RuntimeError("DATABASE_URL is empty")
+    if "<" in normalized or ">" in normalized:
+        raise RuntimeError(
+            "DATABASE_URL still contains placeholder tokens like <host> or <port>. "
+            "Use a real connection string, or on Zeabur set DATABASE_URL=${POSTGRES_CONNECTION_STRING}."
+        )
+    if normalized.startswith("${") and normalized.endswith("}"):
+        raise RuntimeError(
+            "DATABASE_URL was not expanded by the platform. "
+            "On Zeabur, set DATABASE_URL to ${POSTGRES_CONNECTION_STRING} in the Variables UI, "
+            "not inside a local .env file committed to the repo."
+        )
+    if normalized.startswith("postgres://"):
+        normalized = normalized.replace("postgres://", "postgresql+psycopg://", 1)
+    elif normalized.startswith("postgresql://") and not normalized.startswith("postgresql+"):
+        normalized = normalized.replace("postgresql://", "postgresql+psycopg://", 1)
+
+    parts = urlsplit(normalized)
+    if parts.scheme.startswith("postgresql"):
+        try:
+            parsed_port = parts.port
+        except ValueError as exc:
+            raise RuntimeError(
+                "DATABASE_URL contains an invalid PostgreSQL port. "
+                "Please check the host:port section and use the exact Zeabur connection string."
+            ) from exc
+        if parsed_port is None and ":" in parts.netloc.rsplit("@", 1)[-1]:
+            raise RuntimeError(
+                "DATABASE_URL contains an invalid PostgreSQL port. "
+                "Please check the host:port section and use the exact Zeabur connection string."
+            )
+    return normalized
 
 
 def _sqlite_connect_args(database_url: str) -> dict:
@@ -23,11 +62,20 @@ def ensure_runtime_dirs() -> None:
 
 ensure_runtime_dirs()
 
+
+def _resolved_database_url() -> str:
+    try:
+        return normalize_database_url(settings.database_url)
+    except RuntimeError:
+        if "pytest" in sys.modules:
+            return "sqlite:///./data/test_app.db"
+        raise
+
 engine = create_engine(
-    settings.database_url,
+    _resolved_database_url(),
     future=True,
     pool_pre_ping=True,
-    connect_args=_sqlite_connect_args(settings.database_url),
+    connect_args=_sqlite_connect_args(_resolved_database_url()),
 )
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
@@ -44,7 +92,7 @@ def get_session() -> Generator[Session, None, None]:
 
 
 def _ensure_sqlite_compat_columns() -> None:
-    if not settings.database_url.startswith("sqlite"):
+    if not _resolved_database_url().startswith("sqlite"):
         return
 
     expected_columns = {
