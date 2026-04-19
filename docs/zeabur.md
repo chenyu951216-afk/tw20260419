@@ -64,6 +64,24 @@ Recommended for Zeabur:
 - keep secrets in Zeabur env vars instead of committing them into repo state
 - mount shared PostgreSQL rather than relying on SQLite in production
 
+### Correct DATABASE_URL on Zeabur
+
+Do not leave placeholder text such as `<host>` or `<port>` in `DATABASE_URL`.
+
+Recommended:
+
+- `DATABASE_URL=${POSTGRES_CONNECTION_STRING}`
+
+This uses Zeabur's PostgreSQL service reference directly.
+
+Also supported by the app:
+
+- `postgres://...`
+- `postgresql://...`
+- `postgresql+psycopg://...`
+
+The app will normalize standard PostgreSQL URLs to the psycopg driver automatically.
+
 ## Service Setup
 
 ### Web
