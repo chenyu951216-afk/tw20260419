@@ -1,0 +1,8 @@
+﻿Zeabur archive bundle created at: 2026-04-20T03:03:31
+Workspace: C:\Users\tseng\Downloads\台股
+Bundle: C:\Users\tseng\Downloads\台股\_zeabur_archive_bundle_v4
+Archive: app_bundle.zip
+
+Upload this whole folder.
+The Dockerfiles will auto-extract app_bundle.zip during build.
+This avoids relying on Zeabur upload preserving nested src directories.
